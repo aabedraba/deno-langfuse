@@ -32,7 +32,7 @@ Then fill in the values.
 ### 2. Run the server
 
 ```sh
-deno run --env-file -A main.ts
+OTEL_DENO=true deno run --env-file -A main.ts
 ```
 
 The server will start on `http://localhost:8000` (or the port specified in your environment variables).
