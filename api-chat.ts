@@ -21,6 +21,12 @@ const langfuseClient = new LangfuseClient({
   secretKey: Deno.env.get("LANGFUSE_SECRET_KEY"),
 });
 
+// We link the prompt to the trace of this request
+const tracedGetPrompt = observe(
+  langfuseClient.prompt.get.bind(langfuseClient.prompt),
+  { name: "get-langfuse-prompt" },
+);
+
 async function chatHandler(c: Context) {
   try {
     const {
@@ -42,7 +48,7 @@ async function chatHandler(c: Context) {
     //   "reasoningEffort": "low"
     // }
     // ```
-    const prompt = await langfuseClient.prompt.get("langfuse-expert");
+    const prompt = await tracedGetPrompt("langfuse-expert");
     const promptConfig = prompt.config as {
       model: string;
       reasoningSummary: "low" | "medium" | "high" | "detailed";
@@ -90,6 +96,7 @@ async function chatHandler(c: Context) {
         // This exports AI SDK's traces to the OLTP provider that Deno
         // is using and is built on top of the OpenTelemetry SDK
         isEnabled: true,
+        metadata: { langfusePrompt: prompt.toJSON() },
       },
       providerOptions: {
         openai: {
@@ -112,6 +119,22 @@ async function chatHandler(c: Context) {
         });
         updateActiveTrace({
           output: result.content,
+        });
+
+        // End span manually after stream has finished
+        trace.getActiveSpan()?.end();
+      },
+      onError: async (error) => {
+        // We close the MCP client to release resources
+        await langfuseDocsMCPClient.close();
+
+        // Update the output in Langfuse for the UI to display
+        updateActiveObservation({
+          output: error,
+          level: "ERROR"
+        });
+        updateActiveTrace({
+          output: error,
         });
 
         // End span manually after stream has finished
