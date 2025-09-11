@@ -1,19 +1,38 @@
-import { cors } from "jsr:@hono/hono@^4.9.6/cors";
-import { observedChatHandler } from "./api-chat.ts";
-import { Hono } from "jsr:@hono/hono@^4.9.6";
+import { openai } from "npm:@ai-sdk/openai";
+import { generateText, streamText, wrapLanguageModel } from "npm:ai";
+import { initLogger, BraintrustMiddleware } from "npm:braintrust";
 
-const app = new Hono();
+// Initialize Braintrust logging
+initLogger({
+  projectName: "my-ai-project",
+});
 
-app.use("*", cors({
-  origin: "*",
-  allowMethods: ["POST", "OPTIONS"],
-  allowHeaders: ["Content-Type", "Authorization"],
-}));
+// Wrap your model with Braintrust middleware
+const model = wrapLanguageModel({
+  model: openai("gpt-4"),
+  middleware: BraintrustMiddleware({ debug: true }),
+});
 
-// Add chat route
-app.post("/api/chat", observedChatHandler);
+async function main() {
+  // Generate text with automatic tracing
+  const result = await generateText({
+    model,
+    prompt: "What is the capital of France?",
+    system: "Provide a concise answer.",
+    maxOutputTokens: 100,
+  });
 
-// Start the server
-const port = parseInt(Deno.env.get("PORT") || "8000");
+  console.log(result.text);
 
-Deno.serve({ port }, app.fetch);
+  // Stream text with automatic tracing
+  const stream = streamText({
+    model,
+    prompt: "Write a haiku about programming.",
+  });
+
+  for await (const chunk of stream.textStream) {
+    process.stdout.write(chunk);
+  }
+}
+
+main().catch(console.error);
